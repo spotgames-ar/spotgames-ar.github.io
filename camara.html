@@ -47,6 +47,7 @@
 <div id="msg"></div>
 <div class="row" id="ctrlLive">
   <button class="cap" id="btnCap" onclick="capturar()">📸 Sacar foto</button>
+  <button class="sec" id="btnEsp" onclick="toggleEspejo()">🔄 Espejo</button>
   <button class="sec" onclick="window.close()">Cerrar</button>
 </div>
 <div class="row hide" id="ctrlShot">
@@ -62,7 +63,7 @@ var CFG = {
   eq:   parseInt(Q.get('eq'), 10) || 1,
   tipo: Q.get('tipo') || 'Extra'
 };
-var stream = null, shotB64 = null;
+var stream = null, shotB64 = null, espejo = false;
 function $(id){ return document.getElementById(id); }
 function esc(s){ return String(s==null?'':s).replace(/[<>&"]/g,function(c){return {'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c];}); }
 function msg(t,cls){ var m=$('msg'); m.textContent=t||''; m.className=cls||''; }
@@ -94,15 +95,23 @@ function iniciar(){
   var sel=$('cam');
   var cons = { audio:false, video: sel.value ? {deviceId:{exact:sel.value}} : {facingMode:'environment'} };
   navigator.mediaDevices.getUserMedia(cons).then(function(s){
-    stream=s; $('v').srcObject=s; mostrarLive(); poblarCamaras(); msg('');
+    stream=s; $('v').srcObject=s; mostrarLive(); poblarCamaras(); aplicarEspejo(); msg('');
   }).catch(function(e){
     msg('No pude abrir la cámara ('+e.name+'). Dale permiso a la cámara en el navegador y recargá esta ventana.','e');
   });
 }
+function aplicarEspejo(){
+  $('v').style.transform = espejo ? 'scaleX(-1)' : 'none';
+  var b=$('btnEsp'); if(b){ b.style.background = espejo ? 'var(--ac)' : 'var(--card)';
+    b.style.color = espejo ? '#fff' : 'var(--fg)'; }
+}
+function toggleEspejo(){ espejo = !espejo; aplicarEspejo(); }
 function capturar(){
   var v=$('v'), c=$('c');
   c.width = v.videoWidth || 640; c.height = v.videoHeight || 480;
-  c.getContext('2d').drawImage(v,0,0,c.width,c.height);
+  var ctx = c.getContext('2d');
+  if(espejo){ ctx.translate(c.width,0); ctx.scale(-1,1); }  // la foto sale como se ve
+  ctx.drawImage(v,0,0,c.width,c.height);
   shotB64 = c.toDataURL('image/jpeg',0.85).split(',')[1];
   mostrarShot();
 }
