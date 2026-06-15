@@ -63,7 +63,7 @@ var CFG = {
   eq:   parseInt(Q.get('eq'), 10) || 1,
   tipo: Q.get('tipo') || 'Extra'
 };
-var stream = null, shotB64 = null, espejo = false;
+var stream = null, shotB64 = null, espejo = true;  // arranca espejado (webcam frontal); el botón lo da vuelta para el trinocular
 function $(id){ return document.getElementById(id); }
 function esc(s){ return String(s==null?'':s).replace(/[<>&"]/g,function(c){return {'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c];}); }
 function msg(t,cls){ var m=$('msg'); m.textContent=t||''; m.className=cls||''; }
