@@ -47,7 +47,7 @@
 <div id="msg"></div>
 <div class="row" id="ctrlLive">
   <button class="cap" id="btnCap" onclick="capturar()">📸 Sacar foto</button>
-  <button class="sec" id="btnEsp" onclick="toggleEspejo()">🔄 Espejo</button>
+  <button class="sec hide" id="btnEsp" onclick="toggleEspejo()">🔄 Espejo</button>
   <button class="sec" onclick="window.close()">Cerrar</button>
 </div>
 <div class="row hide" id="ctrlShot">
@@ -84,7 +84,9 @@ function poblarCamaras(){
     sel.innerHTML = cams.map(function(d,i){
       return '<option value="'+esc(d.deviceId)+'">'+esc(d.label||('Cámara '+(i+1)))+'</option>'; }).join('');
     if(cur) sel.value=cur;
-    sel.classList.toggle('hide', cams.length<2);   // selector solo si hay más de una
+    var mult = cams.length >= 2;
+    sel.classList.toggle('hide', !mult);            // selector + espejo solo si hay 2+ cámaras
+    var be=$('btnEsp'); if(be) be.classList.toggle('hide', !mult);  // (webcam + trinocular)
   });
 }
 function iniciar(){
