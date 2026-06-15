@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>📷 Cámara · Spot Servicios</title>
+<!--
+  camara.html (github.io) — Cámara webcam/trinocular USB para Spot Servicios.
+  Se hostea acá (spotgames-ar.github.io) porque getUserMedia NO funciona dentro
+  del iframe sandbox de Apps Script (HtmlService) ni en su pop-up: el iframe de
+  googleusercontent no incluye 'camera' en su Permissions-Policy → NotAllowedError.
+  Acá (origen propio, HTTPS) la cámara funciona normal.
+
+  La app de Servicios la abre en pop-up con ?modo=upload|return&ot=&eq=&tipo=.
+  Devuelve la foto al window.opener por postMessage:
+    - modo 'return' (wizard, la OT todavía no existe) → {__spotFoto:'add', ...}
+    - modo 'upload' (detalle de OT)                    → {__spotFoto:'upload', ...}
+  En 'upload' es la APP la que llama apiSubirFoto (este origen no puede llamar al
+  backend de Apps Script). NO se le pasa el token de sesión a este origen.
+-->
+<style>
+  :root{--bg:#0f1115;--card:#1a1d24;--fg:#e8eaed;--mut:#9aa3b2;--ac:#4a9eff;--ok:#2e7d32;--err:#e53935;--bd:rgba(255,255,255,.15)}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,Arial,sans-serif;display:flex;flex-direction:column;align-items:center;min-height:100vh;padding:14px;gap:11px}
+  h1{font-size:15px;margin:0;font-weight:700}
+  .sub{font-size:12px;color:var(--mut);text-align:center}
+  video,canvas{width:100%;max-width:560px;border-radius:10px;background:#000;aspect-ratio:4 / 3;object-fit:cover}
+  select,button{font-size:14px;font-family:inherit;border-radius:8px;border:1px solid var(--bd);padding:10px 14px}
+  select{width:100%;max-width:560px;background:var(--card);color:var(--fg)}
+  .row{display:flex;gap:10px;width:100%;max-width:560px;flex-wrap:wrap;justify-content:center}
+  button{cursor:pointer;font-weight:600;flex:1;min-width:130px}
+  button:disabled{opacity:.5;cursor:default}
+  .cap{background:var(--ac);color:#fff;border-color:var(--ac)}
+  .ok{background:var(--ok);color:#fff;border-color:var(--ok)}
+  .sec{background:var(--card);color:var(--fg)}
+  #msg{font-size:13px;min-height:18px;text-align:center;max-width:560px}
+  #msg.e{color:#ff8a80} #msg.k{color:#7CFC9A}
+  .hide{display:none}
+</style>
+</head>
+<body>
+<h1>📷 Tomar foto</h1>
+<div class="sub" id="ctx"></div>
+<select id="cam" class="hide" onchange="iniciar()"></select>
+<video id="v" autoplay playsinline muted></video>
+<canvas id="c" class="hide"></canvas>
+<div id="msg"></div>
+<div class="row" id="ctrlLive">
+  <button class="cap" id="btnCap" onclick="capturar()">📸 Sacar foto</button>
+  <button class="sec" onclick="window.close()">Cerrar</button>
+</div>
+<div class="row hide" id="ctrlShot">
+  <button class="ok" id="btnUse" onclick="usar()">✔ Usar</button>
+  <button class="sec" onclick="reintentar()">↺ Otra</button>
+</div>
+
+<script>
+var Q = new URLSearchParams(location.search);
+var CFG = {
+  modo: (Q.get('modo') === 'upload' ? 'upload' : 'return'),
+  ot:   Q.get('ot') || '',
+  eq:   parseInt(Q.get('eq'), 10) || 1,
+  tipo: Q.get('tipo') || 'Extra'
+};
+var stream = null, shotB64 = null;
+function $(id){ return document.getElementById(id); }
+function esc(s){ return String(s==null?'':s).replace(/[<>&"]/g,function(c){return {'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c];}); }
+function msg(t,cls){ var m=$('msg'); m.textContent=t||''; m.className=cls||''; }
+
+function mostrarLive(){
+  $('v').classList.remove('hide'); $('c').classList.add('hide');
+  $('ctrlLive').classList.remove('hide'); $('ctrlShot').classList.add('hide');
+}
+function mostrarShot(){
+  $('v').classList.add('hide'); $('c').classList.remove('hide');
+  $('ctrlLive').classList.add('hide'); $('ctrlShot').classList.remove('hide');
+}
+function poblarCamaras(){
+  if(!navigator.mediaDevices.enumerateDevices) return;
+  navigator.mediaDevices.enumerateDevices().then(function(ds){
+    var cams = ds.filter(function(d){ return d.kind==='videoinput'; });
+    var sel=$('cam'), cur=sel.value;
+    sel.innerHTML = cams.map(function(d,i){
+      return '<option value="'+esc(d.deviceId)+'">'+esc(d.label||('Cámara '+(i+1)))+'</option>'; }).join('');
+    if(cur) sel.value=cur;
+    sel.classList.toggle('hide', cams.length<2);   // selector solo si hay más de una
+  });
+}
+function iniciar(){
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    msg('Este navegador no permite usar la cámara (o no es conexión segura).','e'); return;
+  }
+  if(stream) stream.getTracks().forEach(function(t){ t.stop(); });
+  var sel=$('cam');
+  var cons = { audio:false, video: sel.value ? {deviceId:{exact:sel.value}} : {facingMode:'environment'} };
+  navigator.mediaDevices.getUserMedia(cons).then(function(s){
+    stream=s; $('v').srcObject=s; mostrarLive(); poblarCamaras(); msg('');
+  }).catch(function(e){
+    msg('No pude abrir la cámara ('+e.name+'). Dale permiso a la cámara en el navegador y recargá esta ventana.','e');
+  });
+}
+function capturar(){
+  var v=$('v'), c=$('c');
+  c.width = v.videoWidth || 640; c.height = v.videoHeight || 480;
+  c.getContext('2d').drawImage(v,0,0,c.width,c.height);
+  shotB64 = c.toDataURL('image/jpeg',0.85).split(',')[1];
+  mostrarShot();
+}
+function reintentar(){ shotB64=null; iniciar(); }
+function tieneOpener(){ return !!(window.opener && !window.opener.closed); }
+function avisar(accion){
+  try {
+    if(tieneOpener())
+      window.opener.postMessage({ __spotFoto:accion, b64:shotB64, tipoFoto:CFG.tipo, ot:CFG.ot, eq:CFG.eq }, '*');
+  } catch(e){}
+}
+function listoOtra(txt){
+  $('ctrlShot').innerHTML =
+    '<button class="cap" onclick="reintentar()">📸 Otra foto</button>' +
+    '<button class="sec" onclick="window.close()">Listo</button>';
+  msg(txt,'k');
+}
+function usar(){
+  if(!shotB64) return;
+  if(!tieneOpener()){ msg('No puedo devolver la foto: abrí la cámara desde el botón de la app.','e'); return; }
+  $('btnUse').disabled = true;
+  if(CFG.modo==='upload' && CFG.ot){
+    avisar('upload'); listoOtra('✔ Foto enviada a la OT '+CFG.ot+' (revisá la app)');
+  } else {
+    avisar('add'); listoOtra('✔ Foto agregada al ingreso');
+  }
+}
+$('ctx').textContent = (CFG.modo==='upload' ? ('OT '+CFG.ot) : 'Ingreso') + ' · ' + (CFG.tipo||'');
+iniciar();
+</script>
+</body>
+</html>
