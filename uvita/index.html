@@ -42,9 +42,14 @@
     align-items:center;justify-content:center;font-family:'Courier New',monospace}
   .tbtn:active{background:rgba(142,68,173,.6)}
   body.touch .tbtn{display:flex}
-  #btnL{left:calc(18px + var(--sal));bottom:calc(26px + var(--sab))}
-  #btnR{left:calc(96px + var(--sal));bottom:calc(26px + var(--sab))}
-  #btnA{right:calc(22px + var(--sar));bottom:calc(30px + var(--sab));width:74px;height:74px;font-size:20px}
+  #pad{display:none;position:fixed;z-index:10;left:calc(12px + var(--sal));bottom:calc(16px + var(--sab));
+    width:clamp(156px,24vw,208px);height:clamp(70px,18vh,88px);touch-action:none}
+  body.touch #pad{display:flex;gap:8px}
+  #pad .tbtn{position:static;flex:1;width:auto;height:100%;pointer-events:none}
+  .tbtn.held{background:rgba(142,68,173,.75);border-color:#f2d472}
+  #btnA{right:calc(16px + var(--sar));bottom:calc(16px + var(--sab));width:clamp(76px,12vw,92px);height:clamp(76px,18vh,92px);font-size:20px}
+  #touchHelp{position:fixed;z-index:10;left:calc(16px + var(--sal));bottom:calc(4px + var(--sab));font-size:9px;color:#c9a3e0;display:none;pointer-events:none}
+  body.touch #touchHelp{display:block}
   .top{position:fixed;top:calc(8px + var(--sat));z-index:10;color:#b8860b;background:none;
     border:1px solid #5b2c6f;border-radius:6px;padding:4px 8px;font-family:inherit;
     font-size:13px;cursor:pointer;opacity:.8}
@@ -57,9 +62,12 @@
 <div id="wrap"><canvas id="cv"></canvas></div>
 <div id="scan"></div>
 <div id="rot" hidden>&#8635; Girá el celu para jugar más grande<small>(en horizontal se ve el doble)</small></div>
-<button class="tbtn" id="btnL">&#9664;</button>
-<button class="tbtn" id="btnR">&#9654;</button>
-<button class="tbtn" id="btnA">SALTO</button>
+<div id="pad" role="group" aria-label="Deslizá para moverte a izquierda o derecha">
+<button class="tbtn" id="btnL" tabindex="-1" aria-label="Izquierda">&#9664;</button>
+<button class="tbtn" id="btnR" tabindex="-1" aria-label="Derecha">&#9654;</button>
+</div>
+<div id="touchHelp">DESLIZÁ PARA CAMBIAR DE DIRECCIÓN</div>
+<button class="tbtn" id="btnA" aria-label="Saltar o continuar">SALTO</button>
 <button class="top" id="pausa" tabindex="-1" title="Pausa">&#10074;&#10074;</button>
 <button class="top" id="mute" tabindex="-1" title="Sonido (M)">&#9834; ON</button>
 <script>
@@ -71,7 +79,7 @@
    ============================================================ */
 
 // ---------- Setup canvas ----------
-const VW=320, VH=180, TILE=16;
+const VW=320, VH=180, TILE=16, VERSION='1.1';
 const DEBUG=location.hash==='#debug';   // index.html#debug: tecla N (skip) + window.UVITA para verificar.js
 const IS_TOUCH=('ontouchstart' in window)||(navigator.maxTouchPoints>0);
 const cv=document.getElementById('cv'), ctx=cv.getContext('2d');
@@ -298,6 +306,11 @@ SPR.bug = makeSprite([
 '..m.mm.m..',
 ]);
 SPR.bugF = flipSprite(SPR.bug);
+SPR.bugStep = makeSprite([
+'..M....M..','...M..M...','..MMMMMM..','.MMWKKWMM.',
+'MMMKWWKMMM','.mMMMMMMm.','.m..mm..m.',
+]);
+SPR.bugStepF = flipSprite(SPR.bugStep);
 SPR.fly = makeSprite([
 '.C......C.',
 '..C....C..',
@@ -307,6 +320,11 @@ SPR.fly = makeSprite([
 '..cc..cc..',
 ]);
 SPR.flyF = flipSprite(SPR.fly);
+SPR.flyFlap = makeSprite([
+'..........','..C....C..','.CCCCCCCC.','CCCWKKWCCC',
+'CcCCCCCCcC','..cc..cc..',
+]);
+SPR.flyFlapF = flipSprite(SPR.flyFlap);
 SPR.cart = makeSprite([
 '.SSSSSSSS.',
 'SSssssssSS',
@@ -610,13 +628,18 @@ let levelIdx=0, lives=3, score=0, coins=0, cartsGot=0, cartsTotal=0;
 let hiscore=+(store.get('spotUvitaHi')||0);
 let frame=0, stateT=0, cartsSeen=new Set();
 let cheated=false;   // se usó el skip de nivel (#debug): la partida no guarda récord
-function saveHi(){ if(score>hiscore){hiscore=score; if(!cheated)store.set('spotUvitaHi',hiscore);} }
+let continues=0, coinsSeen=new Set(), firstIntro=true;
+const MAX_LIVES=5, EXTRA_LIFE_COINS=30;
+function saveHi(){ if(!cheated&&continues===0&&score>hiscore){hiscore=score;store.set('spotUvitaHi',hiscore);} }
 
 // nivel en curso
 let map=[], mapW=0, mapH=0, theme=THEMES[0];
 let player=null, ents=[], parts=[], cam={x:0,y:0};
 let checkpoint=null, bossRef=null, exitPos=null, exitOpen=true;
 let levelCoins=0, levelCarts=0;
+let popups=[], hitstop=0, shake=0, flashT=0, bossBanner=0;
+function popup(label,x,y,color=PAL.y){popups.push({label,x,y,color,life:48});}
+function impact(stop,amount,flash=0){hitstop=Math.max(hitstop,stop);shake=Math.max(shake,amount);flashT=Math.max(flashT,flash);}
 
 function tileAt(tx,ty){
   if(tx<0||tx>=mapW)return '#';
@@ -632,12 +655,12 @@ function loadLevel(i,fromCheckpoint=false){
   mapW=Math.max(...rows.map(r=>r.length));
   map=rows.map(r=>r.padEnd(mapW,' ').split(''));
   mapH=map.length;
-  ents=[]; parts=[]; bossRef=null; exitPos=null; exitOpen=true;
+  ents=[]; parts=[]; popups=[]; hitstop=shake=flashT=bossBanner=0; bossRef=null; exitPos=null; exitOpen=true;
   let spawn={x:32,y:32};
   for(let y=0;y<mapH;y++)for(let x=0;x<mapW;x++){
     const t=map[y][x];
     if(t==='P'){spawn={x:x*TILE+2,y:y*TILE+2};map[y][x]=' ';}
-    else if(t==='o'){ents.push(mkCoin(x,y));map[y][x]=' ';}
+    else if(t==='o'){const c=mkCoin(x,y);c.ck=i+':'+x+','+y;if(!coinsSeen.has(c.ck))ents.push(c);map[y][x]=' ';}
     else if(t==='C'){const ck=i+':'+x+','+y;
       if(!cartsSeen.has(ck)){const c=mkCart(x,y);c.ck=ck;ents.push(c);}map[y][x]=' ';}
     else if(t==='g'){ents.push(mkBug(x,y));map[y][x]=' ';}
@@ -651,7 +674,8 @@ function loadLevel(i,fromCheckpoint=false){
     ents.forEach(e=>{if(e.kind==='flag'&&Math.abs(e.x-checkpoint.x)<20)e.on=true;});
   } else checkpoint=null;
   player=mkPlayer(spawn.x,spawn.y);
-  cam.x=Math.max(0,player.x-VW/2); cam.y=0;
+  cam.x=Math.max(0,player.x-VW/2); cam.y=Math.max(-8,Math.min(mapH*TILE-VH,player.y-VH/2));
+  cam.targetY=cam.y;
 }
 
 // ---------- Entidades ----------
@@ -668,7 +692,7 @@ function mkFlag(tx,ty){return{kind:'flag',x:tx*TILE+3,y:ty*TILE+4,w:6,h:12,on:fa
 // jefe: duerme en su lugar hasta que Uvita pasa BOSS_WAKE_X; ahí se cierra la arena en ARENA_L
 const BOSS_HP=5, BOSS_WAKE_X=100*TILE, ARENA_L=98*TILE;
 function mkBoss(tx,ty){return{kind:'boss',x:tx*TILE-12,y:ty*TILE-32,w:36,h:26,vx:0,vy:0,
-  hp:BOSS_HP,inv:0,t:0,dead:0,awake:false};}
+  hp:BOSS_HP,inv:0,t:0,dead:0,awake:false,phase:1,mode:'rest',timer:54,targetX:0};}
 
 function aabb(a,b){return a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y;}
 function burst(x,y,color,n=8,spd=2){
@@ -710,36 +734,85 @@ addEventListener('keydown',e=>{
   keys[e.code]=true;
 });
 addEventListener('keyup',e=>keys[e.code]=false);
-function left(){return keys.ArrowLeft||keys.KeyA||touch.l;}
-function right(){return keys.ArrowRight||keys.KeyD||touch.r;}
-function jumpHeld(){return keys.Space||keys.ArrowUp||keys.KeyW||keys.KeyZ||touch.a;}
+function left(){return keys.ArrowLeft||keys.KeyA||touch.l||pad.l;}
+function right(){return keys.ArrowRight||keys.KeyD||touch.r||pad.r;}
+function jumpHeld(){return keys.Space||keys.ArrowUp||keys.KeyW||keys.KeyZ||touch.a||pad.a;}
 const touch={l:false,r:false,a:false};
-// perder el foco / ocultar la pestaña: soltar todo y pausar (si no, Uvita corre sola al pozo)
-function soltarTodo(){ for(const k in keys)keys[k]=false; touch.l=touch.r=touch.a=false; }
-function alSalir(){ soltarTodo(); if(state===ST.PLAY)state=ST.PAUSE; }
-addEventListener('blur',alSalir);
-document.addEventListener('visibilitychange',()=>{ if(document.hidden)alSalir(); else if(AC){audio();musicResync();} });
-function bindTouch(id,prop){
-  const el=document.getElementById(id);
-  const on=e=>{e.preventDefault();audio();
-    if(prop==='a'){ if(state===ST.PLAY){if(!touch.a)pressJump();} else advanceScreens(); }
-    touch[prop]=true;};
-  const off=e=>{e.preventDefault();touch[prop]=false;};
-  el.addEventListener('pointerdown',on); el.addEventListener('pointerup',off);
-  el.addEventListener('pointerleave',off); el.addEventListener('pointercancel',off);
+const pad={l:false,r:false,a:false,start:false,connected:false,waitNeutral:false};
+const directionPointers=new Map(), jumpPointers=new Set();
+let inputSuspended=false;
+function paintTouch(){
+  document.getElementById('btnL').classList.toggle('held',touch.l);
+  document.getElementById('btnR').classList.toggle('held',touch.r);
+  document.getElementById('btnA').classList.toggle('held',touch.a);
 }
-bindTouch('btnL','l'); bindTouch('btnR','r'); bindTouch('btnA','a');
+function pollPad(){
+  let gp;
+  try{gp=Array.from(navigator.getGamepads?navigator.getGamepads():[]).find(g=>g&&g.connected&&g.mapping==='standard');}catch(e){}
+  pad.connected=!!gp;
+  if(!gp||inputSuspended||document.hidden){pad.l=pad.r=pad.a=pad.start=false;return;}
+  const down=i=>!!(gp.buttons[i]&&gp.buttons[i].pressed);
+  const a=down(0)||down(1), start=down(9), axis=gp.axes[0]||0;
+  const l=down(14)||axis<-.3, r=down(15)||axis>.3;
+  if(pad.waitNeutral){pad.l=pad.r=pad.a=pad.start=false;if(!a&&!start&&!l&&!r)pad.waitNeutral=false;return;}
+  if(start&&!pad.start&&(state===ST.PLAY||state===ST.PAUSE))togglePause();
+  else if(a&&!pad.a){audio();if(state===ST.PLAY)pressJump();else advanceScreens();}
+  pad.l=l&&!r;pad.r=r&&!l;pad.a=a;pad.start=start;
+}
+function togglePause(){
+  if(state===ST.PLAY)state=ST.PAUSE;
+  else if(state===ST.PAUSE){state=ST.PLAY;musicResync();}
+}
+// perder el foco / ocultar la pestaña: soltar todo y pausar (si no, Uvita corre sola al pozo)
+function soltarTodo(){
+  for(const k in keys)keys[k]=false;
+  if(player)player.jbuf=0;
+  directionPointers.clear();jumpPointers.clear();touch.l=touch.r=touch.a=false;
+  pad.l=pad.r=pad.a=pad.start=false;pad.waitNeutral=true;paintTouch();
+}
+function alSalir(){ inputSuspended=true;soltarTodo(); if(state===ST.PLAY)state=ST.PAUSE; }
+addEventListener('blur',alSalir);
+addEventListener('focus',()=>{inputSuspended=false;});
+addEventListener('gamepaddisconnected',()=>{soltarTodo();if(state===ST.PLAY)state=ST.PAUSE;});
+document.addEventListener('visibilitychange',()=>{ if(document.hidden)alSalir(); else {inputSuspended=false;if(AC){audio();musicResync();}} });
+function capture(el,e){try{el.setPointerCapture(e.pointerId);}catch(err){}}
+const touchPad=document.getElementById('pad');
+function moveTouch(e){
+  const r=touchPad.getBoundingClientRect();
+  const inside=e.clientX>=r.left-24&&e.clientX<=r.left+r.width+24&&e.clientY>=r.top-24&&e.clientY<=r.top+r.height+24;
+  directionPointers.set(e.pointerId,inside?(e.clientX<r.left+r.width/2?'l':'r'):'');
+  const dirs=Array.from(directionPointers.values());
+  touch.l=dirs.includes('l')&&!dirs.includes('r');touch.r=dirs.includes('r')&&!dirs.includes('l');paintTouch();
+}
+touchPad.addEventListener('pointerdown',e=>{e.preventDefault();audio();capture(touchPad,e);moveTouch(e);});
+touchPad.addEventListener('pointermove',e=>{if(directionPointers.has(e.pointerId)){e.preventDefault();moveTouch(e);}});
+function releaseDirection(e){
+  directionPointers.delete(e.pointerId);
+  const dirs=Array.from(directionPointers.values());
+  touch.l=dirs.includes('l')&&!dirs.includes('r');touch.r=dirs.includes('r')&&!dirs.includes('l');paintTouch();
+}
+['pointerup','pointercancel','lostpointercapture'].forEach(t=>touchPad.addEventListener(t,releaseDirection));
+const jumpButton=document.getElementById('btnA');
+jumpButton.addEventListener('pointerdown',e=>{
+  e.preventDefault();audio();capture(jumpButton,e);
+  if(!touch.a){if(state===ST.PLAY)pressJump();else advanceScreens();}
+  jumpPointers.add(e.pointerId);touch.a=true;paintTouch();
+});
+['pointerup','pointercancel','lostpointercapture'].forEach(t=>jumpButton.addEventListener(t,e=>{
+  jumpPointers.delete(e.pointerId);touch.a=jumpPointers.size>0;paintTouch();
+}));
+jumpButton.addEventListener('pointerup',pedirPantallaCompleta);
 if(IS_TOUCH)document.body.classList.add('touch');
 document.getElementById('pausa').addEventListener('click',e=>{e.preventDefault();audio();
-  if(state===ST.PLAY)state=ST.PAUSE; else if(state===ST.PAUSE)state=ST.PLAY; e.target.blur();});
+  togglePause();e.target.blur();});
 cv.addEventListener('pointerdown',()=>{audio();advanceScreens();});
 cv.addEventListener('pointerup',pedirPantallaCompleta);   // pointerup sí cuenta como gesto de usuario en táctil
 
 function keyPressed(code){
   audio();
   if(code==='KeyM')setMuted(!muted);
-  if(code==='KeyP'&&(state===ST.PLAY||state===ST.PAUSE)){
-    state=(state===ST.PLAY)?ST.PAUSE:ST.PLAY;}
+  if(code==='KeyP')togglePause();
+  if(code==='Escape'&&state===ST.GAMEOVER)toTitle();
   if(DEBUG&&code==='KeyN'&&state===ST.PLAY){cheated=true;nextLevel();} // skip de nivel, solo con #debug
   if(['Space','ArrowUp','KeyW','KeyZ'].includes(code)){
     if(state===ST.PLAY)pressJump(); else advanceScreens();
@@ -749,14 +822,17 @@ function keyPressed(code){
 function pressJump(){ if(player&&state===ST.PLAY)player.jbuf=7; }
 function advanceScreens(){
   if(state===ST.TITLE){startGame();}
-  else if(state===ST.INTRO){state=ST.PLAY;player.jbuf=0;}
+  else if(state===ST.INTRO){state=ST.PLAY;player.jbuf=0;firstIntro=false;}
   else if(state===ST.PAUSE){state=ST.PLAY;}
-  else if(state===ST.GAMEOVER&&stateT>40){toTitle();}
+  else if(state===ST.GAMEOVER&&stateT>40){continueGame();}
   else if(state===ST.WIN&&stateT>60){toTitle();}
 }
-function toTitle(){state=ST.TITLE;stateT=0;}
+function toTitle(){state=ST.TITLE;stateT=0;hitstop=shake=flashT=bossBanner=0;}
+function continueGame(){
+  continues++;lives=3;loadLevel(levelIdx,true);player.inv=120;state=ST.INTRO;stateT=0;
+}
 function startGame(){
-  levelIdx=0;lives=3;score=0;coins=0;cartsGot=0;cheated=false;
+  levelIdx=0;lives=3;score=0;coins=0;cartsGot=0;cheated=false;continues=0;coinsSeen=new Set();firstIntro=true;
   cartsTotal=LEVELS.reduce((n,L)=>n+L.rows.join('').split('C').length-1,0);
   cartsSeen=new Set();
   checkpoint=null; loadLevel(0); state=ST.INTRO; stateT=0;
@@ -775,6 +851,7 @@ function nextLevel(){
 function hurtPlayer(srcX){
   if(player.inv>0||state!==ST.PLAY)return;
   lives--; SFX.hurt(); burst(player.x+5,player.y+6,PAL.L,12,2.5);
+  impact(5,4,7);
   if(lives<=0){ state=ST.DYING; stateT=0; SFX.die(); return; }
   const away=srcX===undefined?-player.dir:(player.x+5<srcX?-1:1);
   player.inv=90; player.vy=-4; player.vx=2*away;
@@ -787,11 +864,18 @@ function killFall(){
 }
 
 function update(){
+  pollPad();
   frame++; stateT++;
   musicTick();
+  if(state===ST.PLAY||state===ST.DYING){
+    if(shake>0)shake=Math.max(0,shake-.4);if(flashT>0)flashT--;if(bossBanner>0)bossBanner--;
+    for(const q of popups){q.y-=.35;q.life--;}
+    popups=popups.filter(q=>q.life>0);
+  }
   if(state===ST.DYING){ if(stateT>70){state=ST.GAMEOVER;stateT=0;saveHi();} return; }
+  if(state===ST.GAMEOVER){if(stateT>640)toTitle();return;}
   // transiciones y animaciones de pantallas viven acá (nunca en render: 120 Hz o sin render las rompen)
-  if(state===ST.INTRO){ if(stateT>60){state=ST.PLAY;player.jbuf=0;} return; }
+  if(state===ST.INTRO){ if(stateT>(firstIntro?240:60)){state=ST.PLAY;player.jbuf=0;firstIntro=false;} return; }
   if(state===ST.WIN){
     if(stateT%5===0)burst(Math.random()*VW+cam.x,cam.y+20,[PAL.y,PAL.P,PAL.g][Math.floor(Math.random()*3)],3,1.5);
     for(const q of parts){q.x+=q.vx;q.y+=q.vy;q.vy+=.05;q.life--;}
@@ -799,6 +883,7 @@ function update(){
     return;
   }
   if(state!==ST.PLAY)return;
+  if(hitstop>0){hitstop--;return;}
 
   const p=player;
   // mover
@@ -839,10 +924,14 @@ function update(){
   for(const e of ents){
     if(state!==ST.PLAY)break;   // murió en este cuadro: nada más golpea
     if(e.kind==='coin'){ e.t+=.15;
-      if(aabb(p,e)){e.gone=true;coins++;score+=10;SFX.coin();burst(e.x+4,e.y+4,PAL.y,6,1.5);}
+      if(aabb(p,e)){
+        e.gone=true;coinsSeen.add(e.ck);coins++;score+=10;SFX.coin();burst(e.x+4,e.y+4,PAL.y,6,1.5);
+        popup('+10',e.x+4,e.y-6);
+        if(coins%EXTRA_LIFE_COINS===0&&lives<MAX_LIVES){lives++;popup('+1 VIDA',p.x+5,p.y-20,PAL.g);SFX.check();}
+      }
     }
     else if(e.kind==='cart'){ e.t+=.08;
-      if(aabb(p,e)){e.gone=true;cartsGot++;cartsSeen.add(e.ck);score+=500;SFX.cart();burst(e.x+5,e.y+5,PAL.C,12,2);}
+      if(aabb(p,e)){e.gone=true;cartsGot++;cartsSeen.add(e.ck);score+=500;SFX.cart();burst(e.x+5,e.y+5,PAL.C,12,2);popup('+500',e.x+5,e.y-8,PAL.C);}
     }
     else if(e.kind==='flag'){
       const fbox={x:e.x-2,y:e.y-40,w:10,h:52};
@@ -884,16 +973,29 @@ function update(){
       if(!e.awake){
         // dormido en su lugar hasta que Uvita entra a la arena
         moveSolid(e);
-        if(p.x>BOSS_WAKE_X){e.awake=true;e.t=0;SFX.boss();burst(e.x+18,e.y+13,PAL.M,16,2.5);}
+        if(p.x>BOSS_WAKE_X){e.awake=true;e.t=0;bossBanner=90;SFX.boss();burst(e.x+18,e.y+13,PAL.M,16,2.5);}
         continue;
       }
       e.t++;
       if(e.inv>0)e.inv--;
-      // saltos hacia el jugador
-      if(e.grounded&&e.t%75===0){ e.vy=-5.2; e.vx=(p.x>e.x?1.35:-1.35); SFX.boss(); }
+      // Cada salto anuncia su dirección. En fase 2 descansa menos, pero sigue avisando.
+      if(e.hp<=2&&e.phase===1){e.phase=2;bossBanner=90;e.timer=Math.min(e.timer,32);SFX.boss();}
+      if(e.mode==='rest')e.timer--;
+      if(e.grounded&&e.mode==='rest'&&e.timer<=0){
+        e.mode='windup';e.timer=e.phase===2?18:24;e.targetX=p.x+p.w/2;e.vx=0;
+      }else if(e.mode==='windup'&&--e.timer<=0){
+        e.mode='air';e.vy=-5.2;e.vx=(e.targetX>e.x+e.w/2?1:-1)*(e.phase===2?1.9:1.35);
+        SFX.boss();burst(e.x+18,e.y+e.h,PAL.S,6,1.3);
+      }
       const pv=e.vx;
-      moveSolid(e);
+      if(e.mode==='windup'){e.vy=0;e.grounded=true;}else moveSolid(e);
       if(e.hitWall)e.vx=-pv*.8;
+      const maxBossX=mapW*TILE-e.w;
+      if(e.x<ARENA_L||e.x>maxBossX){e.x=Math.max(ARENA_L,Math.min(maxBossX,e.x));e.vx=-pv;}
+      if(e.grounded&&e.mode==='air'){
+        e.mode='rest';e.timer=e.phase===2?32:54;e.vx=0;
+        shake=Math.max(shake,2);burst(e.x+18,e.y+e.h,PAL.S,5,1.1);
+      }
       if(e.grounded)e.vx*=.9;
       if(aabb(p,e)){
         // estar ENCIMA del jefe nunca lastima: cayendo = pisotón (daño si no está invulnerable);
@@ -902,8 +1004,9 @@ function update(){
         if(encima){
           if(p.vy>1&&e.inv<=0){
             e.hp--; e.inv=40; score+=200; SFX.stomp();
+            popup('+200',p.x+5,e.y-16,PAL.y);impact(4,4,3);
             burst(p.x+5,e.y,PAL.M,10,2);
-            if(e.hp<=0){e.dead=1;score+=1000;burst(e.x+18,e.y+13,PAL.M,24,3);}
+            if(e.hp<=0){e.dead=1;score+=1000;bossBanner=0;impact(10,6,5);popup('+1000',e.x+18,e.y-24,PAL.C);burst(e.x+18,e.y+13,PAL.M,24,3);}
           }
           p.vy=Math.min(p.vy,-5); p.noCut=true;   // rebote siempre (también con el jefe invulnerable): pogo seguro
         } else hurtPlayer(e.x+e.w/2);
@@ -923,8 +1026,9 @@ function update(){
   parts=parts.filter(q=>q.life>0);
 
   // cámara
-  const tx=p.x-VW/2+5, ty=p.y-VH/2;
-  cam.x+=(tx-cam.x)*.12; cam.y+=(ty-cam.y)*.12;
+  const tx=p.x-VW/2+5+p.dir*24;
+  if(p.grounded||(p.vy>0&&p.y-VH/2>cam.targetY+24))cam.targetY=p.y-VH/2;
+  cam.x+=(tx-cam.x)*.12;cam.y+=(cam.targetY-cam.y)*.12;
   cam.x=Math.max(0,Math.min(mapW*TILE-VW,cam.x));
   cam.y=Math.max(-8,Math.min(mapH*TILE-VH,cam.y));
 }
@@ -933,6 +1037,7 @@ function touchEnemy(e,pts){
   if(aabb(p,e)&&!e.dead){
     if(p.vy>1&&(p.y+p.h)<e.y+6){
       e.dead=1;p.vy=-4.6;p.noCut=true;score+=pts;SFX.stomp();
+      popup('+'+pts,e.x+5,e.y-8,e.kind==='fly'?PAL.C:PAL.y);impact(2,2);
       burst(e.x+5,e.y+3,e.kind==='fly'?PAL.C:PAL.M,8,2);
     } else hurtPlayer(e.x+e.w/2);
   }
@@ -995,13 +1100,14 @@ function drawEnts(){
     else if(e.kind==='bug'){
       if(e.dead){ctx.globalAlpha=1-e.dead/18;
         ctx.drawImage(SPR.bug,dx,dy+(e.dead>>1));ctx.globalAlpha=1;continue;}
-      const s=(Math.floor(frame/8)%2)?1:0;
-      ctx.drawImage(e.vx>0?SPR.bugF:SPR.bug,dx,dy-s);   // apoyado en el piso (la hitbox termina en el tile)
+      const step=(Math.floor(frame/8)%2)!==0;
+      ctx.fillStyle='rgba(0,0,0,.25)';ctx.fillRect(dx+1,dy+7,8,1);
+      ctx.drawImage(step?(e.vx>0?SPR.bugStepF:SPR.bugStep):(e.vx>0?SPR.bugF:SPR.bug),dx,dy);
     }
     else if(e.kind==='fly'){
       if(e.dead){ctx.globalAlpha=1-e.dead/20;ctx.drawImage(SPR.fly,dx,dy);ctx.globalAlpha=1;continue;}
-      const s=(Math.floor(frame/6)%2)?-1:0;
-      ctx.drawImage(e.vx>0?SPR.flyF:SPR.fly,dx,dy+s);
+      const flap=(Math.floor(frame/6)%2)!==0;
+      ctx.drawImage(flap?(e.vx>0?SPR.flyFlapF:SPR.flyFlap):(e.vx>0?SPR.flyF:SPR.fly),dx,dy);
     }
     else if(e.kind==='flag'){ ctx.drawImage(e.on?SPR.flagOn:SPR.flagOff,dx,dy); }
     else if(e.kind==='boss'){
@@ -1010,11 +1116,18 @@ function drawEnts(){
       if(gl){ctx.globalAlpha=.4;}
       const jx=(e.inv>0)?(((frame>>1)&1)?1:-1):0;            // sacudida entera
       const by=e.grounded?-(Math.floor(e.t/12)%2):0;           // respira 1 px solo apoyado
-      ctx.drawImage(SPR.boss,dx+jx,dy+by);
+      if(e.mode==='windup'){
+        ctx.drawImage(SPR.boss,dx-2,dy+5,40,21);
+      }else ctx.drawImage(SPR.boss,dx+jx,dy+by);
       ctx.globalAlpha=1;
+      if(e.mode==='windup'){
+        const sign=e.targetX>e.x+e.w/2?1:-1;
+        textShadow(sign>0?'SALTA >':'< SALTA',dx+18,dy-21,PAL.y,7,'center');
+        ctx.fillStyle=PAL.y;ctx.fillRect(dx+3,dy+e.h+1,30,2);
+      }
       // barra de vida
       ctx.fillStyle='#000';ctx.fillRect(dx+2,dy-8,32,4);
-      ctx.fillStyle=PAL.M;ctx.fillRect(dx+3,dy-7,Math.max(0,Math.round(30*(e.hp/BOSS_HP))),2);
+      ctx.fillStyle=e.phase===2?PAL.y:PAL.M;ctx.fillRect(dx+3,dy-7,Math.max(0,Math.round(30*(e.hp/BOSS_HP))),2);
     }
   }
   // salida
@@ -1059,8 +1172,8 @@ function textShadow(s,x,y,color,size=8,align='left'){
 function drawHUD(){
   ctx.fillStyle='rgba(0,0,0,.35)'; ctx.fillRect(0,0,VW,13);
   for(let i=0;i<lives;i++)ctx.drawImage(SPR.heart,4+i*10,3);
-  textShadow('FICHAS '+coins,44,3,PAL.y);
-  textShadow('CART '+cartsGot+'/'+cartsTotal,124,3,'#9be7ff');
+  textShadow('FICHAS '+coins,60,3,PAL.y);
+  textShadow('CART '+cartsGot+'/'+cartsTotal,140,3,'#9be7ff');
   textShadow('SCORE '+score,VW-4,3,'#fff',8,'right');
   ctx.textAlign='left';
 }
@@ -1077,6 +1190,7 @@ function drawTitle(){
   const t=stateT;
   textShadow('SPOT GAMES',VW/2,18,PAL.y,10,'center');
   textShadow('p r e s e n t a',VW/2,30,'#c9a3e0',7,'center');
+  textShadow('v'+VERSION+' · '+(pad.connected?'JOYSTICK CONECTADO':'PC · CELU · JOYSTICK'),VW/2,43,'#c9a3e0',6,'center');
   // título grande (y=58: la Uvita de abajo llega hasta y=84 en el apex y no pisa las letras)
   ctx.font='bold 25px monospace'; ctx.textAlign='center'; ctx.textBaseline='top';
   ctx.fillStyle='#000'; ctx.fillText('SÚPER UVITA',VW/2+2,58+2);
@@ -1086,13 +1200,24 @@ function drawTitle(){
   // uvita saltando (centro 116, salto de hasta 8 px: sprite entre y=84 y y=137)
   const hop=Math.round(Math.abs(Math.sin(t*.07))*8);
   drawBigUva(VW/2,116-hop,3, hop>5?UVA.jump.n:(t%140<8?UVA.blink.n:UVA.idle.n));
-  if(t%60<38)textShadow('— TOCÁ O APRETÁ ESPACIO —',VW/2,142,'#fff',8,'center');
+  if(t%60<38)textShadow(pad.connected?'— BOTÓN A PARA JUGAR —':'— TOCÁ O APRETÁ ESPACIO —',VW/2,142,'#fff',8,'center');
   textShadow('HI-SCORE '+hiscore,VW/2,154,PAL.y,8,'center');
   textShadow('Av. Cabildo 2230 · Galería Las Vegas · Belgrano',VW/2,168,'#9b7fb5',6,'center');
   ctx.textAlign='left';
 }
 function drawIntro(){
   ctx.fillStyle='#0d0714'; ctx.fillRect(0,0,VW,VH);
+  if(firstIntro){
+    textShadow('NIVEL 1 · '+theme.name,VW/2,18,PAL.y,12,'center');
+    drawBigUva(VW/2,64,3,UVA.idle.n);
+    textShadow('Los glitches robaron los cartuchos.',VW/2,101,'#fff',8,'center');
+    textShadow('¡Recuperalos, Uvita!',VW/2,113,PAL.y,9,'center');
+    const controls=pad.connected?'STICK / CRUCETA: MOVER · A / B: SALTAR':IS_TOUCH?'DESLIZÁ PARA MOVERTE · SALTO: SALTAR':'FLECHAS / AD: MOVER · ESPACIO: SALTAR';
+    textShadow(controls,VW/2,136,'#c9a3e0',7,'center');
+    textShadow('Pisá bichos · 30 fichas = 1 vida',VW/2,149,'#c9a3e0',7,'center');
+    textShadow('SALTAR PARA EMPEZAR',VW/2,166,'#fff',7,'center');
+    return;
+  }
   textShadow('NIVEL '+(levelIdx+1),VW/2,58,'#fff',12,'center');
   textShadow(theme.name,VW/2,78,theme.deco,14,'center');
   drawBigUva(VW/2,110,2, stateT%90<7?UVA.blink.n:UVA.idle.n);
@@ -1106,7 +1231,13 @@ function drawGameOver(){
   textShadow('GAME OVER',VW/2,58,PAL.M,16,'center');
   textShadow('SCORE '+score,VW/2,86,'#fff',9,'center');
   textShadow('HI-SCORE '+hiscore,VW/2,100,PAL.y,9,'center');
-  if(stateT>40&&stateT%50<32)textShadow('tocá para volver',VW/2,128,'#c9a3e0',8,'center');
+  if(stateT>40){
+    const seconds=Math.max(0,Math.ceil((640-stateT)/60));
+    textShadow('¿CONTINUAR?  '+seconds,VW/2,121,PAL.y,12,'center');
+    textShadow(pad.connected?'A / B: CONTINUAR':'SALTO / ESPACIO / TOCÁ: CONTINUAR',VW/2,141,'#fff',8,'center');
+    textShadow('Desde el checkpoint · 3 vidas',VW/2,154,'#c9a3e0',7,'center');
+    textShadow('Continuar conserva puntos, sin récord',VW/2,166,'#c9a3e0',7,'center');
+  }
   ctx.textAlign='left';
 }
 function drawWin(){
@@ -1117,7 +1248,7 @@ function drawWin(){
   textShadow('Uvita rescató los cartuchos',VW/2,54,'#fff',8,'center');
   textShadow('CARTUCHOS  '+cartsGot+' / '+cartsTotal,VW/2,74,'#9be7ff',9,'center');
   textShadow('SCORE  '+score,VW/2,90,'#fff',9,'center');
-  textShadow(score>=hiscore?'¡NUEVO RÉCORD!':'HI-SCORE '+hiscore,VW/2,104,PAL.y,9,'center');
+  textShadow(continues>0?'¡RESCATE COMPLETO! · CONTINUASTE':cheated?'PARTIDA DE PRUEBA':score>=hiscore?'¡NUEVO RÉCORD!':'HI-SCORE '+hiscore,VW/2,104,PAL.y,9,'center');
   const hop=Math.round(Math.abs(Math.sin(stateT*.08))*10);
   drawBigUva(VW/2,138-hop,2,UVA.win.n);
   textShadow('@spotgames.ar · Cabildo 2230, Belgrano',VW/2,166,'#c9a3e0',7,'center');
@@ -1129,10 +1260,24 @@ function render(){
   if(state===ST.TITLE){drawTitle();return;}
   if(state===ST.INTRO){drawIntro();return;}
   if(state===ST.WIN){drawWin();return;}
-  drawBG(); drawMap(); drawEnts(); drawPlayer(); drawParts(); drawHUD();
+  ctx.save();
+  if(shake>0&&state===ST.PLAY)ctx.translate(Math.round(Math.sin(frame*2.7)*shake),Math.round(Math.cos(frame*3.3)*shake*.5));
+  drawBG();drawMap();drawEnts();drawPlayer();drawParts();
+  for(const q of popups){
+    ctx.globalAlpha=Math.min(1,q.life/12);
+    textShadow(q.label,Math.max(24,Math.min(VW-24,Math.round(q.x-cam.x))),Math.max(17,Math.round(q.y-cam.y)),q.color,8,'center');
+  }
+  ctx.globalAlpha=1;ctx.restore();drawHUD();
+  if(flashT>0&&state===ST.PLAY){ctx.fillStyle='rgba(242,212,114,.25)';ctx.fillRect(0,13,VW,2);ctx.fillRect(0,VH-2,VW,2);}
+  if(bossBanner>0&&bossRef&&!bossRef.dead){
+    ctx.fillStyle='rgba(13,7,20,.9)';ctx.fillRect(65,19,190,22);
+    textShadow(bossRef.phase===2?'MEGAGLITCH · ¡MODO FURIA!':'MEGAGLITCH',VW/2,23,PAL.y,9,'center');
+    textShadow('ESQUIVÁ SU SALTO Y PISALO',VW/2,34,'#fff',6,'center');
+  }
   if(state===ST.PAUSE){
     ctx.fillStyle='rgba(0,0,0,.55)';ctx.fillRect(0,0,VW,VH);
-    textShadow('PAUSA',VW/2,80,'#fff',14,'center');ctx.textAlign='left';
+    textShadow('PAUSA',VW/2,72,'#fff',14,'center');
+    textShadow(pad.connected?'START O A PARA SEGUIR':'P / SALTO / TOCÁ PARA SEGUIR',VW/2,96,'#c9a3e0',8,'center');ctx.textAlign='left';
   }
   if(state===ST.DYING){
     ctx.fillStyle='rgba(13,7,20,'+Math.min(.9,stateT/60)+')';ctx.fillRect(0,0,VW,VH);
@@ -1155,7 +1300,8 @@ requestAnimationFrame(loop);
 // Sin #debug no existe nada de esto.
 if(DEBUG){
   window.UVITA={
-    ST,LEVELS,THEMES,TILE,VW,VH,UVA,SPR,PAL,keys,touch,MUS,cam,
+    ST,LEVELS,THEMES,TILE,VW,VH,UVA,SPR,PAL,keys,touch,pad,MUS,cam,
+    get continues(){return continues},get hitstop(){return hitstop},get popups(){return popups},
     get state(){return state}, set state(v){state=v;stateT=0;},
     get stateT(){return stateT}, set stateT(v){stateT=v;},
     get frame(){return frame},
@@ -1167,7 +1313,7 @@ if(DEBUG){
     get exitPos(){return exitPos}, get exitOpen(){return exitOpen}, get bossRef(){return bossRef}, get checkpoint(){return checkpoint},
     get AC(){return AC}, get muted(){return muted},
     tileAt,solidAt,loadLevel,update,render,startGame,nextLevel,toTitle,advanceScreens,pressJump,keyPressed,
-    hurtPlayer,killFall,musicTick,audio,fit,
+    hurtPlayer,killFall,musicTick,audio,fit,pollPad,
   };
 }
 </script>
