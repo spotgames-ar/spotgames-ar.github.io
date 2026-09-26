@@ -1,0 +1,15 @@
+{
+  "name": "SÚPER UVITA — Spot Games",
+  "short_name": "Súper Uvita",
+  "description": "El juego de plataformas retro de Spot Games. Ayudá a Uvita a recuperar los cartuchos del local.",
+  "lang": "es-AR",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#120a1a",
+  "theme_color": "#120a1a",
+  "icons": [
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
