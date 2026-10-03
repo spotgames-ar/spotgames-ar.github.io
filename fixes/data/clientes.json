@@ -1,0 +1,31 @@
+{
+  "clientes": [
+    {
+      "nombre": "Electronic Things", "logo":"assets/clientes/electronic-things.webp", "url":"https://electronicthings.com.ar/", "fondo":"oscuro"
+    },
+    {
+      "nombre": "Gamesuite", "logo":"assets/clientes/gamesuite.webp", "url":"https://gamesuite.com.ar/", "fondo":"claro"
+    },
+    {
+      "nombre": "Express Games", "logo":"assets/clientes/express-game.webp", "url":"https://expressgame.com.ar/", "fondo":"claro"
+    },
+    {
+      "nombre": "IFATEC", "logo":"assets/clientes/ifatec.webp", "url":"https://ifatecargentina.com/", "fondo":"oscuro"
+    },
+    {
+      "nombre": "Evergames", "logo":"assets/clientes/evergames.webp", "url":"https://evergames.com.ar/", "fondo":"claro"
+    },
+    {
+      "nombre": "OC Games", "logo":"assets/clientes/oc-games.webp", "url":"https://oc-games.com.ar/", "fondo":"oscuro"
+    },
+    {
+      "nombre": "Game On Retrogaming", "logo":"assets/clientes/game-on.webp", "url":"https://www.gameonretro.com.ar/", "fondo":"oscuro"
+    },
+    {
+      "nombre": "Play Mania", "logo":"assets/clientes/playmania.webp", "url":"https://playmania438.com.ar/", "fondo":"claro"
+    },
+    {
+      "nombre":"Spot Games", "logo":"assets/clientes/spot-games.webp", "url":"https://www.instagram.com/spotgames.ar/", "fondo":"claro"
+    }
+  ]
+}
