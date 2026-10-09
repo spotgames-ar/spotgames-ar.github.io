@@ -1,0 +1,69 @@
+{
+  "modo": "fixes",
+  "familias": [
+    {
+      "id": "stick",
+      "patron": "analog|\\bstick\\b|palanca",
+      "complementos": [
+        "potenciometro",
+        "modulo",
+        "flex"
+      ]
+    },
+    {
+      "id": "potenciometro",
+      "patron": "potenciometro",
+      "complementos": [
+        "stick",
+        "modulo"
+      ]
+    },
+    {
+      "id": "modulo",
+      "patron": "modulo",
+      "complementos": [
+        "stick",
+        "potenciometro",
+        "flex"
+      ]
+    },
+    {
+      "id": "flex",
+      "patron": "(?:flex|membrana).*(?:joystick|ps[2345]|dualshock|dualsense)",
+      "complementos": [
+        "stick",
+        "modulo"
+      ],
+      "excluir": "lectora|lector|laser|power|encendido|consola"
+    },
+    {
+      "id": "fan",
+      "patron": "fan|cooler|ventilador",
+      "complementos": [
+        "pasta"
+      ]
+    },
+    {
+      "id": "pasta",
+      "patron": "pasta termica",
+      "complementos": [
+        "fan"
+      ]
+    },
+    {
+      "id": "hdmi",
+      "patron": "puerto.*hdmi|hdmi.*puerto",
+      "complementos": [
+        "ic"
+      ]
+    },
+    {
+      "id": "ic",
+      "patron": "(?:chip|integrado|\\bic\\b).*hdmi|hdmi.*(?:chip|integrado|\\bic\\b)",
+      "complementos": [
+        "hdmi"
+      ]
+    }
+  ],
+  "relleno": "flux|estano|malla|destornillador|pasta termica"
+}

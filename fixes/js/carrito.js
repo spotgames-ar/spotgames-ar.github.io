@@ -1,3 +1,4 @@
+import {cabeceraPedido} from './pedido.js';
 // Sin DOM ni dependencias. El almacenamiento es una dependencia opcional.
 export const MAX_CANTIDAD = 999;
 export const MAX_URL = 8000;
@@ -75,6 +76,7 @@ export function mensajePedido(items, productos, opciones = {}) {
   const nombre = linea(opciones.nombre).slice(0, 80);
   return [
     'Hola, Spot Fixes! Quiero cotizar este pedido para el gremio (desde la web):',
+    cabeceraPedido(opciones.numero||'W-BORRADOR'),
     ...(r.lineas.some(i => i.producto.ejemplo) ? ['CATÁLOGO DE EJEMPLO: confirmar productos y disponibilidad.'] : []),
     '',
     ...r.lineas.map(i => `${i.cantidad} × ${linea(i.producto.nombre)} [${i.id}] — ${i.subtotal === null ? 'precio a confirmar' : `${moneda(i.producto.precio)} c/u · subtotal ${moneda(i.subtotal)}`}${i.producto.stock === 'consultar' ? ' · stock a consultar' : ''}`),
@@ -84,6 +86,7 @@ export function mensajePedido(items, productos, opciones = {}) {
     ...(opciones.mayorista && evaluarMayorista(items,productos,opciones.mayorista).aplica ? ['Solicito cotización mayorista: el pedido alcanza una condición por cantidad o monto. El total mostrado arriba usa Venta Local, sin descuento aplicado.'] : []),
     ...(r.sinPrecio ? [`${r.sinPrecio} ${r.sinPrecio === 1 ? 'unidad sin precio, fuera' : 'unidades sin precio, fuera'} del total.`] : []),
     `Entrega: ${entrega}.`, `Pago preferido: ${pago}.`,
+    ...(opciones.telefono ? [`Teléfono: ${linea(opciones.telefono)}.`] : []),
     ...(nombre ? [`Nombre / local: ${nombre}.`] : []),
     ...(linea(opciones.nota) ? [`Localidad / comentario: ${linea(opciones.nota).slice(0, 300)}.`] : []),
     `Los precios son de referencia y se confirman por WhatsApp. Actualizado el ${linea(opciones.actualizado)}.`,

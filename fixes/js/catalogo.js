@@ -1,7 +1,8 @@
+const ordenNombre=new Intl.Collator('es',{numeric:true});
 import { normalizar } from './carrito.js';
-export function filtrar(productos, { buscar = '', consola = '', modelo = '', categoria = '' } = {}) {
+export function filtrar(productos, { buscar = '', consola = '', modelo = '', categoria = '', soloDisponibles = false } = {}) {
   const palabras = normalizar(buscar).split(/\s+/).filter(Boolean);
-  return productos.filter(p => (!consola || p.consola === consola) && (!modelo || p.modelos.includes(modelo)) && (!categoria || p.categoria === categoria) && palabras.every(s => normalizar([p.id,p.nombre,p.categoria,p.consola,...p.modelos,p.descripcion].join(' ')).includes(s)));
+  return productos.filter(p => (!soloDisponibles || p.stock === 'disponible') && (!consola || p.consola === consola) && (!modelo || p.modelos.includes(modelo)) && (!categoria || p.categoria === categoria) && palabras.every(s => normalizar([p.id,p.nombre,p.categoria,p.consola,...p.modelos,p.descripcion].join(' ')).includes(s)));
 }
 export const modelosDisponibles = (productos, consola = '') => [...new Set(productos.filter(p=>!consola || p.consola === consola).flatMap(p=>p.modelos))].sort((a,b)=>a.localeCompare(b,'es',{numeric:true}));
 export function paginar(productos,{pagina=1,tamano=24,orden='destacados'}={}) {
@@ -17,7 +18,7 @@ export function paginar(productos,{pagina=1,tamano=24,orden='destacados'}={}) {
       const fotos=Number(b.fotos.length>0)-Number(a.fotos.length>0);if(fotos)return fotos;
       const accesorios=Number(a.categoria==='Accesorios')-Number(b.categoria==='Accesorios');if(accesorios)return accesorios;
     }
-    return a.nombre.localeCompare(b.nombre,'es',{numeric:true})||a.id.localeCompare(b.id);
+    return ordenNombre.compare(a.nombre,b.nombre)||a.id.localeCompare(b.id);
   });
   const paginas=Math.max(1,Math.ceil(ordenados.length/tamano));
   pagina=Math.max(1,Math.min(paginas,Number.isInteger(pagina)?pagina:1));

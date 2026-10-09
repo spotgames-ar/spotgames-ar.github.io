@@ -1,10 +1,14 @@
 {
-  "telefono":"5491122998385",
-  "telefonoVisible":"11 2299-8385",
-  "instagram":"https://www.instagram.com/spotfixes/",
-  "listaGremio":null,
-  "mercadolibre":null,
-  "publicUrl":"https://spotgames-ar.github.io/fixes/",
-  "horarios":"Lunes a sábado · 10 a 18 h",
-  "direccion":"Av. Cabildo 2230 · Galería Las Vegas · Local 27 · Belgrano, CABA"
+  "telefono": "5491122998385",
+  "telefonoVisible": "11 2299-8385",
+  "instagram": "https://www.instagram.com/spotfixes/",
+  "listaGremio": null,
+  "mercadolibre": null,
+  "publicUrl": "https://spotgames-ar.github.io/fixes/",
+  "horarios": "Lunes a sábado · 10 a 18 h",
+  "direccion": "Av. Cabildo 2230 · Galería Las Vegas · Local 27 · Belgrano, CABA",
+  "estadisticas": {
+    "ga4": "",
+    "clarity": ""
+  }
 }
