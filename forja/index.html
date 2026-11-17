@@ -17,6 +17,8 @@
          text-align: center; padding: 0 16px; }
   img { width: 96px; height: 96px; border-radius: 22px; }
   a { color: #ff8a4c; }
+  a.btn { display: inline-block; padding: 12px 28px; border-radius: 12px; background: #E8590C; color: #fff;
+          text-decoration: none; font-weight: 600; }
 </style>
 </head>
 <body>
@@ -28,14 +30,28 @@
 // Puente para la pantalla de inicio del iPhone: Apps Script no deja poner el apple-touch-icon,
 // así que el acceso se crea desde esta página y acá se reenvía a la web app.
 // Solo pasa la clave personal (?k=), que viaja en el link de cada uno y no se guarda en ningún lado.
+// 17/11/2026: si redirige apenas abre, «Agregar a inicio» guarda la página de Google (una «F» gris).
+// Por eso: abierta desde el link del bot se queda acá (y le suma &inicio=1 a la dirección, que es la
+// que guarda el iPhone); abierta desde el ícono del inicio (trae inicio=1) entra directo a Forja2.
 (function () {
   var APP = 'https://script.google.com/macros/s/AKfycbxluMVRLRjnsyIbuJs8L-YWelH2ne3zcMylBG_erpl0XUFldD8mgfr16djYtkcDzdRJjg/exec';
-  var k = '';
-  try { k = new URLSearchParams(location.search).get('k') || ''; } catch (e) {}
+  var k = '', desdeInicio = false;
+  try {
+    var p = new URLSearchParams(location.search);
+    k = p.get('k') || '';
+    desdeInicio = p.get('inicio') === '1';
+  } catch (e) {}
   if (!/^[A-Za-z0-9_-]{1,128}$/.test(k)) k = '';
   var url = APP + (k ? '?k=' + encodeURIComponent(k) : '');
-  document.getElementById('msg').innerHTML = 'Abriendo Forja2… <br><a href="' + url + '">Tocá acá si no abre</a>';
-  location.replace(url);
+  var msg = document.getElementById('msg');
+  if (desdeInicio || !k) {
+    msg.innerHTML = 'Abriendo Forja2…<br><a href="' + url + '">Tocá acá si no abre</a>';
+    location.replace(url);
+    return;
+  }
+  try { history.replaceState(null, '', '?k=' + encodeURIComponent(k) + '&inicio=1'); } catch (e) {}
+  msg.innerHTML = '<b>Para dejarlo en el inicio:</b><br>tocá Compartir → «Agregar a inicio».'
+    + '<br><br><a class="btn" href="' + url + '">Abrir Forja2</a>';
 })();
 </script>
 </body>
