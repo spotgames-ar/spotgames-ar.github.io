@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="es-AR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Forja2</title>
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<meta name="apple-mobile-web-app-title" content="Forja2">
+<meta name="theme-color" content="#E8590C">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" href="../iconos/forja2.png">
+<style>
+  :root { color-scheme: light dark; }
+  body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+         font: 17px/1.4 -apple-system, system-ui, "Segoe UI", sans-serif; background: #1b1b1f; color: #f2f2f2;
+         text-align: center; padding: 0 16px; }
+  img { width: 96px; height: 96px; border-radius: 22px; }
+  a { color: #ff8a4c; }
+</style>
+</head>
+<body>
+<main>
+  <img src="apple-touch-icon.png" alt="">
+  <p id="msg">Abriendo Forja2…</p>
+</main>
+<script>
+// Puente para la pantalla de inicio del iPhone: Apps Script no deja poner el apple-touch-icon,
+// así que el acceso se crea desde esta página y acá se reenvía a la web app.
+// Solo pasa la clave personal (?k=), que viaja en el link de cada uno y no se guarda en ningún lado.
+(function () {
+  var APP = 'https://script.google.com/macros/s/AKfycbxluMVRLRjnsyIbuJs8L-YWelH2ne3zcMylBG_erpl0XUFldD8mgfr16djYtkcDzdRJjg/exec';
+  var k = '';
+  try { k = new URLSearchParams(location.search).get('k') || ''; } catch (e) {}
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(k)) k = '';
+  var url = APP + (k ? '?k=' + encodeURIComponent(k) : '');
+  document.getElementById('msg').innerHTML = 'Abriendo Forja2… <br><a href="' + url + '">Tocá acá si no abre</a>';
+  location.replace(url);
+})();
+</script>
+</body>
+</html>
